@@ -6,19 +6,14 @@ library("forcats")
 #### Read in data ####
 
 # Picrust IMG genome annotations
-picrust <- read.table(
-   "/home/hannah/Downloads/ko_13_5_precalculated_real700.tab",
+picrust <- read.table("ko_13_5_precalculated_nometadata.tab",
                       header = TRUE, sep = "\t", comment.char = "", quote = "", 
                       colClasses = c(X.OTU_IDs = "factor"))
-picrust_taxonomy <- read.table(
-   "/home/hannah/Documents/Fierer_lab/BorealMoss/WPS-2_Metagenome/IMG_Annotation_analysis/Picrust_database/97_otu_taxonomy.txt",
-                         header = FALSE, sep = "\t")
+picrust_taxonomy <- read.table("97_otu_taxonomy.txt",header = FALSE, sep = "\t")
 # KO and Module Descriptions
-KO_desc <- read.table(
-   "/home/hannah/Documents/Fierer_lab/BorealMoss/WPS-2_Metagenome/IMG_Annotation_analysis/Picrust_database/ko_13_5_precalculated_kegg_descriptors_colcorr.tab",
+KO_desc <- read.table("ko_13_5_precalculated_kegg_descriptors_colcorr.tab",
                       header = TRUE, sep = "\t", comment.char = "", quote = "")
-M_desc <- read.table(
-   "/home/hannah/Documents/Fierer_lab/BorealMoss/WPS-2_Metagenome/IMG_Annotation_analysis/Picrust_database/ko_13_5_precalculated_keggM_descriptors_colcorr.tab",
+M_desc <- read.table("ko_13_5_precalculated_keggM_descriptors_colcorr.tab",
                       header = TRUE, sep = "\t", comment.char = "", quote = "")
 
 # My Bin annotations
