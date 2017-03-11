@@ -2,6 +2,7 @@ library("data.table")
 library("ggplot2")
 library("dplyr")
 library("tidyr")
+library("dtplyr")
 library("forcats")
 
 #### Read in data ####
@@ -27,17 +28,16 @@ bins_ko <- fread("ko_untargets_all_bins_r.txt",
 #### Clean and prepare data ####
 
 # Prepare KO product annotations
-KO_desc_t <- data.frame(t(KO_desc[,-1]))
-names(KO_desc_t) <- c("Product")
-KO_desc_t <- KO_desc_t %>%
-   add_rownames(var = "KO")
+KO_desc_t <- rbindlist(list(as.list(names(KO_desc)), KO_desc))
+KO_desc_t <- transpose(KO_desc_t[,c("OTU_IDs","metadata_NSTI") := NULL, with = FALSE])
+names(KO_desc_t) <- c("KO", "Product")
 
 # Prepare KO module annotations
-M_desc_t <- data.frame(t(M_desc[,-1]))
-names(M_desc_t) <- c("Module")
+M_desc_t <- rbindlist(list(as.list(names(M_desc)), M_desc))
+M_desc_t <- transpose(M_desc_t[,c("OTU_IDs","metadata_NSTI") := NULL, with = FALSE])
+names(M_desc_t) <- c("KO", "Module")
 M_desc_t <- M_desc_t %>%
    separate(col = Module, into = paste("Module",1:19,sep="."), sep = "\\|") %>%
-   add_rownames(var = "KO") %>%
    mutate_each(funs(gsub("Unclassified;", "", .)), -KO) %>%
    gather(Colname, Module, -KO) %>%
    separate(col = Module, into = paste("Level",1:3,sep="."), sep = ";") %>%
