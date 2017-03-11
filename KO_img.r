@@ -1,3 +1,4 @@
+library("data.table")
 library("ggplot2")
 library("dplyr")
 library("tidyr")
@@ -6,18 +7,21 @@ library("forcats")
 #### Read in data ####
 
 # Picrust IMG genome annotations
-picrust <- read.table("ko_13_5_precalculated_nometadata.tab",
-                      header = TRUE, sep = "\t", comment.char = "", quote = "", 
-                      colClasses = c(X.OTU_IDs = "factor"))
-picrust_taxonomy <- read.table("97_otu_taxonomy.txt",header = FALSE, sep = "\t")
+picrust <- fread("ko_13_5_precalculated_nometadata.tab",
+                      header = TRUE, sep = "\t",
+                      colClasses = list(factor = 1, integer = 2:6910, numeric = 6911))
+picrust <- picrust %>%
+  filter(metadata_NSTI <= 0.10789) # trying to only select the genomes that were in IMG
+
+picrust_taxonomy <- fread("97_otu_taxonomy.txt",header = FALSE, sep = "\t")
 # KO and Module Descriptions
-KO_desc <- read.table("ko_13_5_precalculated_kegg_descriptors_colcorr.tab",
-                      header = TRUE, sep = "\t", comment.char = "", quote = "")
-M_desc <- read.table("ko_13_5_precalculated_keggM_descriptors_colcorr.tab",
-                      header = TRUE, sep = "\t", comment.char = "", quote = "")
+KO_desc <- fread("ko_13_5_precalculated_kegg_descriptors_colcorr.tab",
+                      header = TRUE, sep = "\t")
+M_desc <- fread("ko_13_5_precalculated_keggM_descriptors_colcorr.tab",
+                      header = TRUE, sep = "\t")
 
 # My Bin annotations
-bins_ko <- read.table("/home/hannah/Downloads/ko_untargets_all_bins_r.txt",
+bins_ko <- fread("ko_untargets_all_bins_r.txt",
                       header = TRUE, sep = "\t")
 
 #### Clean and prepare data ####
@@ -47,17 +51,19 @@ KO_annot <- M_desc_t %>%
 # Prepare picrust annotations
 picrust_pa <- picrust %>%
    select(-metadata_NSTI) %>%
-   mutate_each(funs(replace(., . > 0, 1)), -X.OTU_IDs)
+   mutate_each(funs(replace(., . > 0, 1)), -OTU_IDs) %>%
+   mutate(bin_gg = "GG")
+  
 
 picrust_pa_melt <- picrust_pa %>%
-   gather(KO, presence, -X.OTU_IDs) %>%
+   gather(KO, presence, -OTU_IDs, -bin_gg) %>%
    mutate(KO = as.factor(KO), presence = as.integer(presence),
-          X.OTU_IDs = as.factor(X.OTU_IDs))
+          OTU_IDs = as.factor(OTU_IDs))
 
 # Prepare picrust taxonomy
 picrust_tax <- picrust_taxonomy %>%
-   rename(X.OTU_IDs = V1, Taxonomy = V2) %>%
-   mutate(X.OTU_IDs = as.factor(X.OTU_IDs))
+   rename(OTU_IDs = V1, Taxonomy = V2) %>%
+   mutate(OTU_IDs = as.factor(OTU_IDs))
 
 picrust_pa_melt_tax <- picrust_pa_melt %>%
    inner_join(picrust_tax)
@@ -66,16 +72,17 @@ picrust_pa_melt_tax <- picrust_pa_melt %>%
 bins_ko_compact <- bins_ko %>% group_by(bin, KO) %>%
    tally() %>%
    mutate(presence = replace(n, n > 0, 1)) %>%
-   select(-n)
+   select(-n) %>%
+   mutate(bin_gg = "Bin")
 
 # Join Bins and picrust annotations
-
+merge()
 ### There are 376 KO assignments in my genoems that are not in the database. 
 ### Need to figure out what to do about it...
 bins_picrust_ko <- bins_ko_compact %>%
-   full_join(picrust_pa_melt, by = (c("bin" = "X.OTU_IDs", "KO",
-                                      "presence"))) %>%
-   mutate(bin_gg = ifelse(grepl("bin", bin), "Bin", "GG"))
+   full_join(picrust_pa_melt, by = (c("bin" = "OTU_IDs", "KO",
+                                      "presence", "bin_gg"))) %>%
+   #mutate(bin_gg = ifelse(grepl("bin", bin), "Bin", "GG"))
 
 #### Calculate Rarity of KOs ####
 picrust_pa_melt_tally <- picrust_pa_melt %>% 
