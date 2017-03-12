@@ -48,40 +48,55 @@ M_desc_t <- M_desc_t %>%
 KO_annot <- M_desc_t %>%
    inner_join(KO_desc_t, by = "KO")
 
+# Prepare picrust taxonomy
+picrust_tax <- picrust_taxonomy %>%
+  rename(OTU_IDs = V1, Taxonomy = V2) %>%
+  mutate(OTU_IDs = as.factor(OTU_IDs))
+
+#picrust_pa_melt_tax <- picrust_pa_melt %>%
+#  inner_join(picrust_tax)
+
 # Prepare picrust annotations
 picrust_pa <- picrust %>%
    select(-metadata_NSTI) %>%
    mutate_each(funs(replace(., . > 0, 1)), -OTU_IDs) %>%
    mutate(bin_gg = "GG")
   
+setkey(picrust_pa,OTU_IDs)
+setkey(picrust_tax,OTU_IDs)
+picrust_pa_tax <- picrust_pa[picrust_tax, nomatch = 0]
 
-picrust_pa_melt <- picrust_pa %>%
-   gather(KO, presence, -OTU_IDs, -bin_gg) %>%
+picrust_pa_melt <- picrust_pa_tax %>%
+   gather(KO, presence, -OTU_IDs, -bin_gg, -Taxonomy) %>%
    mutate(KO = as.factor(KO), presence = as.integer(presence),
-          OTU_IDs = as.factor(OTU_IDs))
+          OTU_IDs = as.factor(OTU_IDs)) %>%
+  select(OTU_IDs, KO, presence, bin_gg, Taxonomy)
 
-# Prepare picrust taxonomy
-picrust_tax <- picrust_taxonomy %>%
-   rename(OTU_IDs = V1, Taxonomy = V2) %>%
-   mutate(OTU_IDs = as.factor(OTU_IDs))
+# # Prepare picrust taxonomy
+# picrust_tax <- picrust_taxonomy %>%
+#    rename(OTU_IDs = V1, Taxonomy = V2) %>%
+#    mutate(OTU_IDs = as.factor(OTU_IDs))
+# 
+# picrust_pa_melt_tax <- picrust_pa_melt %>%
+#    inner_join(picrust_tax)
 
-picrust_pa_melt_tax <- picrust_pa_melt %>%
-   inner_join(picrust_tax)
 
 # Prepare Bins annotations
 bins_ko_compact <- bins_ko %>% group_by(bin, KO) %>%
    tally() %>%
    mutate(presence = replace(n, n > 0, 1)) %>%
    select(-n) %>%
-   mutate(bin_gg = "Bin")
+   mutate(bin_gg = "Bin") %>%
+   rename(OTU_IDs = bin) %>%
+   select(OTU_IDs, KO, presence, bin_gg)
 
 # Join Bins and picrust annotations
-merge()
 ### There are 376 KO assignments in my genoems that are not in the database. 
 ### Need to figure out what to do about it...
-bins_picrust_ko <- bins_ko_compact %>%
-   full_join(picrust_pa_melt, by = (c("bin" = "OTU_IDs", "KO",
-                                      "presence", "bin_gg"))) %>%
+bins_picrust_ko <- rbindlist(list(bins_ko_compact, picrust_pa_melt), fill = TRUE)
+# bins_ko_compact %>%
+#    full_join(picrust_pa_melt, by = (c("bin" = "OTU_IDs", "KO",
+#                                       "presence", "bin_gg"))) %>%
    #mutate(bin_gg = ifelse(grepl("bin", bin), "Bin", "GG"))
 
 #### Calculate Rarity of KOs ####
@@ -96,23 +111,29 @@ picrust_rare <- picrust_pa_melt_tally %>%
 
 #### Combine Bin and rare picrust data ####
 # Joining picrust counts and bin counts
-bins_picrust_ko_otu <-  picrust_pa_melt_tax %>%
-   filter(grepl("g__Nostoc", Taxonomy)) %>%
-   inner_join(bins_picrust_ko)
+# bins_picrust_ko_otu <-  picrust_pa_melt_tax %>%
+#    filter(grepl("g__Nostoc", Taxonomy)) %>%
+#    inner_join(bins_picrust_ko)
 
+picrust_rare <- as.data.table(picrust_rare)
+setkey(bins_picrust_ko,KO, presence)
+setkey(picrust_rare,KO, presence)
 
-rare_bins_ko <- bins_picrust_ko %>% 
-   full_join(picrust_rare, by = c("KO",
-                                  "presence")) %>%
-   filter(Rare == "Rare") %>%
-   filter(bin_gg == "Bin") %>%
-   select(bin, KO, bin_gg, freq, Rare)
+# perform the join
+rare_bins_ko <- merge(bins_picrust_ko,picrust_rare, all = TRUE)
 
-rare_by_bins <- rare_bins_ko %>%
-   mutate(presence = 1) %>%
-   spread(bin, presence, fill = 0)
+rare_bins_ko <- rare_bins_ko %>%
+  filter(Rare == "Rare") %>%
+  select(OTU_IDs, KO, bin_gg, freq, Rare, presence, Taxonomy)
+
+rare_by_bins <- rare_bins_ko[is.na(Taxonomy) | Taxonomy %like% "g__Nostoc"]
+
+rare_by_bins <- rare_by_bins %>%
+   select(OTU_IDs:KO, freq:presence) %>%
+   spread(OTU_IDs, presence, fill = 0)
 
 #### Combine KO annotations and Rare picrust data ####
+KO_annot <- as.data.table(KO_annot)
 rare_ko_annot <- picrust_rare %>%
    select(KO, freq) %>%
    inner_join(KO_annot, by = c("KO"))
@@ -131,30 +152,30 @@ rare_by_bins_annot <- rare_by_bins %>%
 #### Plot Results ####
 
 # Ordered Heatmap
-plot_rare_df <- as.matrix(rare_by_bins[c(7,12,9)])
-rownames(plot_rare_df) <- rare_by_bins$KO
-row.order <- hclust(dist(plot_rare_df))$order
-col.order <- hclust(dist(t(plot_rare_df)))$order
-plot_rare_df_ord <- data.frame(plot_rare_df[row.order, col.order])
-plot_rare_df_ord$KO <- rownames(plot_rare_df_ord)
-
-rare_ord_melt <- plot_rare_df_ord %>%
-   gather(bin, value, -KO) %>%
-   inner_join(KO_annot, by = "KO") %>%
-   mutate(Level.1 = replace(Level.1, value == 0, NA),
-          Level.2 = replace(Level.2, value == 0, NA),
-          Level.3 = replace(Level.3, value == 0, NA))  %>%
-   mutate(Level.1 = factor(Level.1), Level.2 = factor(Level.2), 
-          Level.3 = factor(Level.3)) %>%
-   filter(Level.2 == "Energy Metabolism")
-
-ggplot(data = rare_ord_melt,
-       aes(x = bin, y = fct_reorder(KO, Level.3), fill = Level.3)) + 
-   geom_raster() + geom_label(aes(label = Level.3))
-   scale_fill_discrete(na.value = "black") +
-   theme(axis.text.x = element_text(angle = 90, hjust = 1),
-         axis.text.y = element_blank()) +
-   ggtitle("Clustered Rare KOs")
+# plot_rare_df <- as.matrix(rare_by_bins[c(7,12,9)])
+# rownames(plot_rare_df) <- rare_by_bins$KO
+# row.order <- hclust(dist(plot_rare_df))$order
+# col.order <- hclust(dist(t(plot_rare_df)))$order
+# plot_rare_df_ord <- data.frame(plot_rare_df[row.order, col.order])
+# plot_rare_df_ord$KO <- rownames(plot_rare_df_ord)
+# 
+# rare_ord_melt <- plot_rare_df_ord %>%
+#    gather(bin, value, -KO) %>%
+#    inner_join(KO_annot, by = "KO") %>%
+#    mutate(Level.1 = replace(Level.1, value == 0, NA),
+#           Level.2 = replace(Level.2, value == 0, NA),
+#           Level.3 = replace(Level.3, value == 0, NA))  %>%
+#    mutate(Level.1 = factor(Level.1), Level.2 = factor(Level.2), 
+#           Level.3 = factor(Level.3)) %>%
+#    filter(Level.2 == "Energy Metabolism")
+# 
+# ggplot(data = rare_ord_melt,
+#        aes(x = bin, y = fct_reorder(KO, Level.3), fill = Level.3)) + 
+#    geom_raster() + geom_label(aes(label = Level.3))
+#    scale_fill_discrete(na.value = "black") +
+#    theme(axis.text.x = element_text(angle = 90, hjust = 1),
+#          axis.text.y = element_blank()) +
+#    ggtitle("Clustered Rare KOs")
 
 ### Ordered by KEGG orthology
 plot_rare_df_ord <- rare_by_bins_annot %>%
@@ -162,10 +183,14 @@ plot_rare_df_ord <- rare_by_bins_annot %>%
    arrange(Level.3, Product)
 
 porph_chlorophyll <- plot_rare_df_ord %>% 
-   filter(Level.3 == "Porphyrin and chlorophyll metabolism") %>%
+   filter(Level.3 == "Photosynthesis - antenna proteins" |
+          Level.3 == "Porphyrin and chlorophyll metabolism" |
+          Level.3 == "Photosynthesis proteins" |
+          Level.3 == "Photosynthesis") %>%
    select(KO) %>%
    inner_join(plot_rare_df_ord)
 
+plot_rare_df_ord <- porph_chlorophyll
 
 rare_ord_melt <- plot_rare_df_ord %>%
    gather(bin, value, -KO, -Level.1, -Level.2, -Level.3, -Product) %>%
@@ -177,13 +202,21 @@ rare_ord_melt <- plot_rare_df_ord %>%
    arrange(Level.3, KO) %>%
    add_rownames(var = "order") %>%
    mutate(order = as.numeric(order)) %>%
-   filter(Level.2 == "Metabolism of Cofactors and Vitamins")
+   filter(Level.1 == "Metabolism") %>%
+   group_by(Level.3) %>% mutate(nko = n())
 
 ggplot(data = rare_ord_melt,
-       aes(x = bin, y = fct_reorder(KO, order), fill = Level.3)) + 
-   geom_raster() + 
-   geom_text(aes(label = Level.3)) +
-   theme(axis.text.x = element_text(angle = 90, hjust = 1),
+       aes(x = bin, y = fct_reorder(KO, order), 
+           fill = Level.3, group = nko)) + 
+   geom_tile(height = 1) + 
+   geom_text(aes(label = Product)) +
+   facet_wrap(~Level.3, strip.position = "left", scales = "free_y", ncol = 1) + 
+   theme(panel.spacing = unit(0, "lines"),
+         strip.background = element_blank(),
+         strip.placement = "outside",
+         axis.text.x = element_text(angle = 90, hjust = 1),
+         axis.text.y = element_blank(),
+         strip.text.y = element_text(angle = 180, hjust = 1),
          legend.position = "none") +
    ggtitle("Clustered Rare KOs")
 
