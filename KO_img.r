@@ -1,5 +1,6 @@
 library("data.table")
 library("ggplot2")
+library("ggrepel")
 library("dplyr")
 library("tidyr")
 library("dtplyr")
@@ -126,7 +127,7 @@ rare_bins_ko <- rare_bins_ko %>%
   filter(Rare == "Rare") %>%
   select(OTU_IDs, KO, bin_gg, freq, Rare, presence, Taxonomy)
 
-rare_by_bins <- rare_bins_ko[is.na(Taxonomy) | Taxonomy %like% "g__Nostoc"]
+rare_by_bins <- rare_bins_ko[is.na(Taxonomy) | Taxonomy %like% "Rhodospirillales"]
 
 rare_by_bins <- rare_by_bins %>%
    select(OTU_IDs:KO, freq:presence) %>%
@@ -179,18 +180,8 @@ rare_by_bins_annot <- rare_by_bins %>%
 
 ### Ordered by KEGG orthology
 plot_rare_df_ord <- rare_by_bins_annot %>%
-   select(KO, bin.029, bin.033, bin.044, bin.061, Level.1, Level.2, Level.3, Product) %>%
+   select(KO, bin.029, bin.033, bin.044, Level.1, Level.2, Level.3, Product) %>%
    arrange(Level.3, Product)
-
-porph_chlorophyll <- plot_rare_df_ord %>% 
-   filter(Level.3 == "Photosynthesis - antenna proteins" |
-          Level.3 == "Porphyrin and chlorophyll metabolism" |
-          Level.3 == "Photosynthesis proteins" |
-          Level.3 == "Photosynthesis") %>%
-   select(KO) %>%
-   inner_join(plot_rare_df_ord)
-
-plot_rare_df_ord <- porph_chlorophyll
 
 rare_ord_melt <- plot_rare_df_ord %>%
    gather(bin, value, -KO, -Level.1, -Level.2, -Level.3, -Product) %>%
@@ -219,4 +210,61 @@ ggplot(data = rare_ord_melt,
          strip.text.y = element_text(angle = 180, hjust = 1),
          legend.position = "none") +
    ggtitle("Clustered Rare KOs")
+ggsave("WPS-2_Bins_KO_Labels.png", device = "png", width = 7, height = 5, dpi = 400)
 
+ggplot(data = rare_ord_melt,
+       aes(x = bin, y = fct_reorder(KO, order), 
+           fill = Level.3, group = nko)) + 
+  geom_tile(aes(alpha = nko), height = 1) + 
+  #geom_text(aes(label = Product)) +
+  facet_wrap(~Level.3, strip.position = "left", scales = "free_y", ncol = 1) + 
+  theme(panel.spacing = unit(0, "lines"),
+        strip.background = element_blank(),
+        strip.placement = "outside",
+        axis.text.x = element_text(angle = 90, hjust = 1),
+        axis.text.y = element_blank(),
+        strip.text.y = element_text(angle = 180, hjust = 1),
+        legend.position = "none") +
+  ggtitle("Clustered Rare KOs")
+ggsave("WPS-2_Bins_KO_nolabels.png", device = "png", width = 7, height = 5, dpi = 400)
+
+
+# Just the phototrophy genes #
+porph_chlorophyll <- plot_rare_df_ord %>% 
+  filter(Level.3 == "Photosynthesis - antenna proteins" |
+           Level.3 == "Porphyrin and chlorophyll metabolism" |
+           Level.3 == "Photosynthesis proteins" |
+           Level.3 == "Photosynthesis") %>%
+  select(KO) %>%
+  inner_join(plot_rare_df_ord)
+
+plot_rare_df_ord <- porph_chlorophyll
+
+rare_ord_melt <- plot_rare_df_ord %>%
+  gather(bin, value, -KO, -Level.1, -Level.2, -Level.3, -Product) %>%
+  mutate(Level.1 = replace(Level.1, value == 0, NA),
+         Level.2 = replace(Level.2, value == 0, NA),
+         Level.3 = replace(Level.3, value == 0, NA))  %>%
+  mutate(Level.1 = factor(Level.1), Level.2 = factor(Level.2), 
+         Level.3 = factor(Level.3)) %>%
+  arrange(Level.3, KO) %>%
+  add_rownames(var = "order") %>%
+  mutate(order = as.numeric(order)) %>%
+  filter(Level.1 == "Metabolism") %>%
+  group_by(Level.3) %>% mutate(nko = n())
+
+ggplot(data = rare_ord_melt,
+       aes(x = bin, y = fct_reorder(KO, order), 
+           fill = Level.3, group = nko)) + 
+  geom_tile(height = 1) + 
+  geom_text(aes(label = Product)) +
+  facet_wrap(~Level.3, strip.position = "left", scales = "free_y", ncol = 1) + 
+  theme(panel.spacing = unit(0, "lines"),
+        strip.background = element_blank(),
+        strip.placement = "outside",
+        axis.text.x = element_text(angle = 90, hjust = 1),
+        axis.text.y = element_blank(),
+        strip.text.y = element_text(angle = 180, hjust = 1),
+        legend.position = "none") +
+  ggtitle("Clustered Rare KOs")
+ggsave("WPS-2_Bins_KO_Labels.png", device = "png", width = 7, height = 5, dpi = 400)
