@@ -210,7 +210,7 @@ ggplot(data = rare_ord_melt,
          strip.text.y = element_text(angle = 180, hjust = 1),
          legend.position = "none") +
    ggtitle("Clustered Rare KOs")
-ggsave("WPS-2_Bins_KO_Labels.png", device = "png", width = 7, height = 5, dpi = 400)
+ggsave("WPS-2_Bins_KO_Labels.png", device = "png", width = 10, height = 5, dpi = 400)
 
 ggplot(data = rare_ord_melt,
        aes(x = bin, y = fct_reorder(KO, order), 
@@ -226,7 +226,7 @@ ggplot(data = rare_ord_melt,
         strip.text.y = element_text(angle = 180, hjust = 1),
         legend.position = "none") +
   ggtitle("Clustered Rare KOs")
-ggsave("WPS-2_Bins_KO_nolabels.png", device = "png", width = 7, height = 5, dpi = 400)
+ggsave("WPS-2_Bins_KO_nolabels.png", device = "png", width = 10, height = 5, dpi = 400)
 
 
 # Just the phototrophy genes #
